@@ -6,7 +6,8 @@ using namespace suika;
 
 static std::atomic<suika::id> next_id{0};
 static thread_local scheduler sched;
-thread_local fiber_entity* fiber_entity::this_fiber = new fiber_entity;
+thread_local std::unique_ptr<fiber_entity> main_fiber = std::make_unique<fiber_entity>();
+thread_local fiber_entity* fiber_entity::this_fiber = main_fiber.get();
 
 class _fiber_exit_unwind {};
 
@@ -26,6 +27,9 @@ fiber_entity::fiber_entity(context::entry_t entry, std::size_t stack_size):
 fiber_entity*
 fiber_entity::switch_to(std::uint64_t first, std::uint64_t second_or_ret, fiber_entity* entity)
 {
+        if (!entity || entity == this_fiber)
+                return nullptr;
+        
         this_fiber = entity;
         
         auto _prev = m_context.swap(first, second_or_ret, entity->m_context);        
@@ -58,6 +62,19 @@ void
 fiber_entity::set_ready()
 {
         m_scheduler->ready(*this);
+}
+
+bool
+fiber_entity::wait_until(std::chrono::steady_clock::time_point& deadline)
+{
+        scheduler::timer t;
+        t.deadline = deadline;
+        t.fiber = this_fiber;
+        
+        sched.wait(t);
+        self::resched();
+        
+        return deadline <= std::chrono::steady_clock::now();
 }
 
 void
@@ -200,10 +217,6 @@ void
 self::resched()
 {
         auto next = sched.pick_next();
-
-        if (!next)
-                return;
-
         fiber_entity::this_fiber->switch_to(0, reinterpret_cast<std::uint64_t>(fiber_entity::this_fiber), next);
 
         interruption_point();
@@ -213,8 +226,6 @@ void
 self::yield()
 {
         auto next = sched.pick_next();
-        if (!next)
-                return;
         
         sched.ready(*fiber_entity::this_fiber);
 
@@ -264,4 +275,48 @@ self::restore_interruption::restore_interruption(disable_interruption& di)
 self::restore_interruption::~restore_interruption()
 {
         fiber_entity::this_fiber->m_interruption_enabled.store(false, std::memory_order_release);
+}
+
+void
+self::sleep_until(std::chrono::steady_clock::time_point deadline)
+{
+        fiber_entity::this_fiber->wait_until(deadline);
+}
+
+void
+self::sleep_for(std::chrono::steady_clock::duration duration)
+{
+        sleep_until(duration + std::chrono::steady_clock::now());
+}
+
+void
+self::wait_oneshot(int fd, io::masks_t masks)
+{
+        epoll_event ev{ masks | EPOLLONESHOT, { .ptr = fiber_entity::this_fiber }};
+
+        if (sched.epoll_ctl(EPOLL_CTL_ADD, fd, &ev) < 0) {
+                if (errno != EEXIST)
+                        throw std::system_error(errno, std::system_category());
+                if (sched.epoll_ctl(EPOLL_CTL_MOD, fd, &ev) < 0)
+                        throw std::system_error(errno, std::system_category());                
+        }
+
+        self::resched();
+}
+
+bool
+self::wait_oneshot(int fd, io::masks_t masks, std::chrono::milliseconds timeout)
+{
+        using namespace std::literals::chrono_literals;
+
+        scheduler::timer t;
+        t.deadline = std::chrono::steady_clock::now() + timeout;
+        t.fiber = fiber_entity::this_fiber;
+        
+        if (timeout != 0ms)
+                sched.wait(t);
+        
+        wait_oneshot(fd, masks);
+
+        return t.deadline > std::chrono::steady_clock::now();
 }

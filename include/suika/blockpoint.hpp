@@ -9,16 +9,6 @@
 namespace suika {
         class fiber_entity;
         
-        class blockpoint {
-        private:
-                std::atomic<fiber_entity*> m_current_blocking{nullptr};
-
-        public:
-                void wait();
-                bool try_wait();
-                void wake();
-        };
-
         class blocklist {
         private:
                 using fiber_list_t = list<fiber_entity>;
@@ -28,6 +18,7 @@ namespace suika {
 
         public:
                 void wait();
+                
                 void wake_one();
                 void wake_all();
         };
@@ -45,6 +36,9 @@ namespace suika {
 
         public:
                 std::atomic<futex_word> word;
+
+                futex() = default;
+                futex(futex_word init_val): word(init_val) {}
                 
                 void wait(futex_word val);
                 void wake(std::size_t count);

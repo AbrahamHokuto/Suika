@@ -4,7 +4,7 @@
 namespace suika {
         template <typename _elem_t> class list;
         
-        template <typename _elem_t >
+        template <typename _elem_t>
         class list_base_hook {
         private:
                 list_base_hook *prev = this;

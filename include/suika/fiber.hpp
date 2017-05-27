@@ -1,11 +1,13 @@
 #ifndef SKA_FIBER_HPP
 #define SKA_FIBER_HPP
 
+#include "io.hpp"
 #include "stack.hpp"
 #include "context.hpp"
 #include "blockpoint.hpp"
 
 #include <atomic>
+#include <chrono>
 #include <memory>
 #include <functional>
 
@@ -33,7 +35,7 @@ namespace suika {
 
                 std::atomic<std::size_t> m_joiner_count{0};
 
-                constexpr static std::size_t default_stack_size = 4096;
+                constexpr static std::size_t default_stack_size = 4096;                
 
                 fiber_entity();
                 fiber_entity(context::entry_t entry, std::size_t stack_size = default_stack_size);
@@ -44,6 +46,8 @@ namespace suika {
                 void clean_up();
 
                 void set_ready();
+
+                bool wait_until(std::chrono::steady_clock::time_point& deadline);
         };
         
         class fiber {
@@ -68,22 +72,18 @@ namespace suika {
                 fiber(const fiber&) = delete;
                 fiber(fiber&& rhs) noexcept
                 {
-                        fiber_entity* tmp = nullptr;
-                        rhs.m_entity.exchange(tmp, std::memory_order_acq_rel);
-                        m_entity.store(tmp, std::memory_order_release);
+                        auto entity = rhs.m_entity.exchange(nullptr, std::memory_order_acq_rel);
+                        m_entity.store(entity, std::memory_order_release);
                 }
 
                 fiber&
                 operator=(fiber&& rhs)
                 {
-                        if (this->joinable()) {
-                                this->interrupt();
-                                this->join();
-                        }
+                        if (this->joinable())
+                                throw std::runtime_error("fiber object already occupied");
 
-                        fiber_entity* tmp = nullptr;
-                        rhs.m_entity.exchange(tmp, std::memory_order_acq_rel);
-                        m_entity.store(tmp, std::memory_order_release);
+                        auto entity = rhs.m_entity.exchange(nullptr, std::memory_order_acq_rel);
+                        m_entity.store(entity, std::memory_order_release);
 
                         return *this;
                 }
@@ -128,6 +128,12 @@ namespace suika {
                         restore_interruption(disable_interruption&);
                         ~restore_interruption();
                 };
+
+                void sleep_until(std::chrono::steady_clock::time_point deadline);
+                void sleep_for(std::chrono::steady_clock::duration duration);
+
+                void wait_oneshot(int fd, io::masks_t masks);
+                bool wait_oneshot(int fd, io::masks_t masks, std::chrono::milliseconds timeout);
         };
 }
 
