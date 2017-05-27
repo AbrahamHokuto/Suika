@@ -90,6 +90,14 @@ namespace suika {
 
                 ~fiber();
 
+                void
+                swap(fiber& rhs)
+                {
+                        auto tmp = rhs.m_entity.exchange(nullptr, std::memory_order_acq_rel);
+                        rhs.m_entity.exchange(m_entity.exchange(tmp, std::memory_order_acq_rel),
+                                              std::memory_order_acq_rel);                        
+                }
+
                 template <typename callable, typename... args_t>
                 explicit fiber(callable&& f, args_t&&... args)
                 {

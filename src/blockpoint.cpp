@@ -41,23 +41,11 @@ blocklist::wait()
 }
 
 void
-blocklist::wake_one()
+blocklist::wake(std::size_t count)
 {
         std::lock_guard<std::mutex> lk(m_guard);
         
-        if (m_waiting_list.empty())
-                return;
-        
-        auto& ret = m_waiting_list.head();
-        ret.set_ready();
-}
-
-void
-blocklist::wake_all()
-{
-        std::lock_guard<std::mutex> lk(m_guard);
-        
-        while (!m_waiting_list.empty())
+        for (std::size_t i = 0; i < count && !m_waiting_list.empty(); ++i)
                 m_waiting_list.head().set_ready();
 }
 

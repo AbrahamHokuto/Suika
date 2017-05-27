@@ -32,8 +32,7 @@ namespace suika {
         public:
                 void wait();
                 
-                void wake_one();
-                void wake_all();
+                void wake(std::size_t count = 1);
         };
        
         using futex_word = std::int32_t;

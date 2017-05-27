@@ -1,5 +1,6 @@
 #include <suika/sync/mutex.hpp>
 #include <suika/sync/adaptive_lock.hpp>
+#include <suika/sync/semaphore.hpp>
 
 using namespace suika;
 
@@ -56,4 +57,21 @@ sync::adaptive_lock::try_lock()
                 return false;
 
         return !m_locked.exchange(true, std::memory_order_acq_rel);        
+}
+
+void
+sync::semaphore::wait()
+{
+        auto val = m_semaphore.fetch_sub(1, std::memory_order_acq_rel);
+        if (val < 1)        
+                m_queue.wait();
+}
+
+void
+sync::semaphore::signal(long incr)
+{
+        auto val = m_semaphore.fetch_add(incr);
+
+        if (val < 0)
+                m_queue.wake(incr);
 }
