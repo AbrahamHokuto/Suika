@@ -10,7 +10,7 @@ CXXFLAGS := $(CFLAGS) -std=c++1z
 
 all: release
 
-.PHONY: debug release clean
+.PHONY: debug release clean syntax_check
 
 debug: CFLAGS += -g
 debug: CXXFLAGS += -g

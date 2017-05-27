@@ -64,14 +64,21 @@ fiber_entity::set_ready()
         m_scheduler->ready(*this);
 }
 
+void
+fiber_entity::register_timer(scheduler::timer& t)
+{
+        t.fiber = this_fiber;
+        sched.wait(t);
+}
+
 bool
 fiber_entity::wait_until(std::chrono::steady_clock::time_point& deadline)
 {
         scheduler::timer t;
         t.deadline = deadline;
-        t.fiber = this_fiber;
+
+        register_timer(t);
         
-        sched.wait(t);
         self::resched();
         
         return deadline <= std::chrono::steady_clock::now();
@@ -289,34 +296,3 @@ self::sleep_for(std::chrono::steady_clock::duration duration)
         sleep_until(duration + std::chrono::steady_clock::now());
 }
 
-void
-self::wait_oneshot(int fd, io::masks_t masks)
-{
-        epoll_event ev{ masks | EPOLLONESHOT, { .ptr = fiber_entity::this_fiber }};
-
-        if (sched.epoll_ctl(EPOLL_CTL_ADD, fd, &ev) < 0) {
-                if (errno != EEXIST)
-                        throw std::system_error(errno, std::system_category());
-                if (sched.epoll_ctl(EPOLL_CTL_MOD, fd, &ev) < 0)
-                        throw std::system_error(errno, std::system_category());                
-        }
-
-        self::resched();
-}
-
-bool
-self::wait_oneshot(int fd, io::masks_t masks, std::chrono::milliseconds timeout)
-{
-        using namespace std::literals::chrono_literals;
-
-        scheduler::timer t;
-        t.deadline = std::chrono::steady_clock::now() + timeout;
-        t.fiber = fiber_entity::this_fiber;
-        
-        if (timeout != 0ms)
-                sched.wait(t);
-        
-        wait_oneshot(fd, masks);
-
-        return t.deadline > std::chrono::steady_clock::now();
-}

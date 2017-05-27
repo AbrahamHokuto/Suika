@@ -3,45 +3,42 @@
 
 using namespace suika;
 
-// void
-// blockpoint::wait()
-// {
-//         m_current_blocking.store(fiber_entity::this_fiber, std::memory_order::memory_order_release);
-//         self::resched();
-// }
+void
+blockpoint::wait()
+{
+        m_current.exchange(fiber_entity::this_fiber, std::memory_order_acq_rel);
+        self::resched();
+}
 
-// bool
-// blockpoint::try_wait()
-// {
-//         fiber_entity* expected = nullptr;
-//         auto ret = m_current_blocking.compare_exchange_strong(expected, fiber_entity::this_fiber,
-//                                                               std::memory_order::memory_order_acq_rel,
-//                                                               std::memory_order::memory_order_acquire);
-//         if (ret)
-//                 self::resched();
+bool
+blockpoint::try_wait()
+{
+        if (m_current.load(std::memory_order_consume))
+                return false;
 
-//         return ret;
-// }
+        fiber_entity* expected = nullptr;
 
-// void
-// blockpoint::wake()
-// {
-//         fiber_entity* value = nullptr;
-//         value = m_current_blocking.exchange(value, std::memory_order_acq_rel);
+        return m_current.compare_exchange_strong(expected, fiber_entity::this_fiber, std::memory_order_acq_rel, std::memory_order_acq_rel);
+}
 
-//         if (value)
-//                 value->set_ready();
-// }
+void
+blockpoint::wake()
+{
+        auto value = m_current.exchange(nullptr, std::memory_order_acq_rel);
 
-// void
-// blocklist::wait()
-// {
-//         std::unique_lock<std::mutex> lk(m_guard);
-//         m_waiting_list.insert_tail(*fiber_entity::this_fiber);
-//         lk.unlock();
+        if (value)
+                value->set_ready();
+}
+
+void
+blocklist::wait()
+{
+        std::unique_lock<std::mutex> lk(m_guard);
+        m_waiting_list.insert_tail(*fiber_entity::this_fiber);
+        lk.unlock();
         
-//         self::resched();
-// }
+        self::resched();
+}
 
 void
 blocklist::wake_one()

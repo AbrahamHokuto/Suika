@@ -12,9 +12,10 @@
 
 struct socket_t {
         int fd = -1;
+        std::unique_ptr<suika::io::watcher> watcher;
 
-        socket_t(int fd): fd(fd) {}
-        socket_t(socket_t&& rhs): fd(rhs.fd) { rhs.fd = -1; };
+        socket_t(int fd): fd(fd), watcher(std::make_unique<suika::io::watcher>(fd, suika::io::masks::read | suika::io::masks::write | suika::io::masks::edge_triggered)) {}
+        socket_t(socket_t&& rhs): fd(rhs.fd), watcher(std::move(rhs.watcher)) { rhs.fd = -1; };
         ~socket_t() { ::shutdown(fd, SHUT_RDWR); close(fd); }
 };
 
@@ -29,11 +30,7 @@ fiber_main(int _sock, sockaddr_in addr)
                 while (true) {
                         ssize_t bytes_to_send = 0;
                 
-                        while (true) {                        
-                                if (!suika::self::wait_oneshot(sock.fd, suika::io::masks::read, 5000ms))
-                                        throw std::runtime_error("recv timeout"); 
-                                
-                
+                        while (true) {
                                 auto ret = recv(sock.fd, buf, 4096, MSG_NOSIGNAL);
                         
                                 if (ret == 0) {
@@ -42,10 +39,14 @@ fiber_main(int _sock, sockaddr_in addr)
 
 
                                 if (ret < 0) {
-                                        if (errno != EAGAIN)
+                                        if (errno != EAGAIN) {
                                                 throw std::system_error(errno, std::system_category());
-                                        else
+                                        } else {
+                                                if (!sock.watcher->wait(5000ms))
+                                                        throw std::runtime_error("client timeout");
+                                                
                                                 continue;
+                                        }
                                 }
 
                                 bytes_to_send = ret;
@@ -53,19 +54,20 @@ fiber_main(int _sock, sockaddr_in addr)
                         }
                 
                         while (bytes_to_send) {
-                                if (!suika::self::wait_oneshot(sock.fd, suika::io::masks::write, 5000ms))
-                                        throw std::runtime_error("send timeout");
-
                                 auto ret = send(sock.fd, buf, bytes_to_send, MSG_NOSIGNAL);
 
                                 if (ret == 0)
                                         throw std::runtime_error("client closed");
 
                                 if (ret < 0) {
-                                        if (errno != EAGAIN)
+                                        if (errno != EAGAIN) {
                                                 throw std::system_error(errno, std::system_category());
-                                        else
+                                        } else {
+                                                if (!sock.watcher->wait(5000ms))
+                                                        throw std::runtime_error("client timeout");
+                                                
                                                 continue;
+                                        }
                                 }
 
                                 bytes_to_send -= ret;
@@ -98,16 +100,18 @@ main()
         if (listen(lsock, 128) < 0)
                 throw std::system_error(errno, std::system_category());
 
-        std::cout << "listening" << std::endl;        
+        suika::io::watcher lsock_watcher(lsock, suika::io::masks::read);
+
+        std::cout << "listening" << std::endl;
         
         while (true) {
-                suika::self::wait_oneshot(lsock, suika::io::masks::read);
-
+                lsock_watcher.wait();
+                
                 struct sockaddr_in c_addr;
                 socklen_t addrlen;
 
                 auto ret = accept4(lsock, reinterpret_cast<sockaddr*>(&c_addr), &addrlen, SOCK_NONBLOCK | SOCK_CLOEXEC);             
-
+                
                 if (ret < 0)
                         throw std::system_error(errno, std::system_category());
 

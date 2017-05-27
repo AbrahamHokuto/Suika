@@ -8,6 +8,19 @@
 
 namespace suika {
         class fiber_entity;
+
+        class blockpoint {
+        private:
+                std::atomic<fiber_entity*> m_current{nullptr};
+
+        public:
+                bool occupied();
+                
+                void wait();
+                void wake();
+
+                bool try_wait();
+        };
         
         class blocklist {
         private:

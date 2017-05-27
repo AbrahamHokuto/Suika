@@ -2,6 +2,7 @@
 #define SKA_FIBER_HPP
 
 #include "io.hpp"
+#include "scheduler.hpp"
 #include "stack.hpp"
 #include "context.hpp"
 #include "blockpoint.hpp"
@@ -16,8 +17,6 @@ namespace suika {
         
         class fiber_interruption {};
 
-        class scheduler;
-        
         class fiber_entity: public list_base_hook<fiber_entity> {
         public:
                 static thread_local fiber_entity* this_fiber;
@@ -47,6 +46,7 @@ namespace suika {
 
                 void set_ready();
 
+                void register_timer(scheduler::timer& t);
                 bool wait_until(std::chrono::steady_clock::time_point& deadline);
         };
         
@@ -132,8 +132,17 @@ namespace suika {
                 void sleep_until(std::chrono::steady_clock::time_point deadline);
                 void sleep_for(std::chrono::steady_clock::duration duration);
 
-                void wait_oneshot(int fd, io::masks_t masks);
-                bool wait_oneshot(int fd, io::masks_t masks, std::chrono::milliseconds timeout);
+                template <typename _clock, typename _duration>
+                void sleep_until(std::chrono::time_point<_clock, _duration>& deadline)
+                {
+                        sleep_for(std::chrono::duration_cast<std::chrono::steady_clock::duration>(deadline - _clock::now()));
+                }
+
+                template <typename _rep, typename _period>
+                void sleep_for(std::chrono::duration<_rep, _period>& duration)
+                {
+                        sleep_for(std::chrono::duration_cast<std::chrono::steady_clock::duration>(duration));
+                }
         };
 }
 

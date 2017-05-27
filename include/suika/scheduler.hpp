@@ -3,6 +3,7 @@
 
 #include "list.hpp"
 #include "rbtree.hpp"
+#include "io.hpp"
 
 #include <list>
 #include <mutex>
@@ -43,13 +44,15 @@ namespace suika {
 
                 timer_queue_t m_sleep_queue;
 
+                io::loop& m_loop;
+
                 int m_epfd = -1, m_eventfd = -1;
-                
+
                 void _ready(fiber_entity&);
                 
         public:
                 scheduler();
-                ~scheduler();
+                
                 void ready(fiber_entity&);
                 fiber_entity* pick_next();
                 void wait(timer& t);
