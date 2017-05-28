@@ -1,6 +1,6 @@
 OBJS := $(patsubst src/%.cpp, build/%_cxx.o, $(wildcard src/*.cpp)) $(patsubst src/%.S, build/%_asm.o, $(wildcard src/*.S))
 TESTS := $(patsubst test/%.cpp, bin/test/%, $(wildcard test/*.cpp))
-INCLUDES := $(wildcard include/Suika/*.hpp)
+INCLUDES := $(wildcard include/suika/*.hpp)
 AS := as
 ASFLAGS :=
 CC := gcc
@@ -10,7 +10,7 @@ CXXFLAGS := $(CFLAGS) -std=c++1z
 
 all: release
 
-.PHONY: debug release clean syntax_check
+.PHONY: debug release clean
 
 debug: CFLAGS += -g
 debug: CXXFLAGS += -g

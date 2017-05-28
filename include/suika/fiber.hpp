@@ -101,7 +101,7 @@ namespace suika {
                 template <typename callable, typename... args_t>
                 explicit fiber(callable&& f, args_t&&... args)
                 {
-                        entry_container_t entry(std::bind(f, std::forward<args_t>(args)...));
+                        entry_container_t entry([&f, &args...](){ std::invoke(std::forward<callable>(f), std::forward<args_t>(args)...); });
                         create_entity(entry);
                 }
 
