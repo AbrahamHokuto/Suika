@@ -7,6 +7,7 @@
 
 #include <chrono>
 #include <memory>
+#include <atomic>
 
 namespace suika::io {
         using masks_t = std::uint32_t;
@@ -27,6 +28,8 @@ namespace suika::io {
         private:
                 int m_epfd = -1;
                 int m_eventfd = -1;
+
+                std::atomic_bool m_interrupted{false};
 
         public:
                 loop();

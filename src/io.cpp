@@ -121,7 +121,8 @@ io::loop::run_once(std::chrono::steady_clock::time_point deadline)
                                 while (read(m_eventfd, &buf, sizeof(buf)) > 0);
 
                                 if (errno != EAGAIN)
-                                        throw std::system_error(errno, std::system_category());                                
+                                        throw std::system_error(errno, std::system_category());
+
                         } else {
                                 auto w = static_cast<watcher*>(evs[i].data.ptr);
                                 w->wake();
@@ -130,11 +131,17 @@ io::loop::run_once(std::chrono::steady_clock::time_point deadline)
 
                 break;
         }
+        m_interrupted.store(false, std::memory_order_release);
 }
 
 void
 io::loop::interrupt()
 {
+        if (m_interrupted.load(std::memory_order_consume))
+                return;
+
+        m_interrupted.store(false, std::memory_order_release);
+        
         std::uint64_t buf = 1;
         if (::write(m_eventfd, &buf, sizeof(buf)) < 0)
                 throw std::system_error(errno, std::system_category());
