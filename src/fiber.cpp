@@ -199,10 +199,7 @@ fiber::detach()
         entity->m_detached.store(true, std::memory_order_release);
         m_entity.store(nullptr, std::memory_order_release);
 
-        if (entity->m_joiner_count.load(std::memory_order_acquire))
-                entity->m_running_futex.wake(std::numeric_limits<std::size_t>::max());
-        else
-                delete entity;
+        entity->m_running_futex.wake(std::numeric_limits<std::size_t>::max());
 }
 
 void
