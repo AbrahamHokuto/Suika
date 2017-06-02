@@ -14,6 +14,5 @@ main()
         std::cout << "main" << std::endl;
         suika::fiber f(fiber);
         std::cout << "main" << std::endl;
-        std::string line;
-        std::getline(std::cin, line);        
+        f.join();
 }

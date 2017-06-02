@@ -5,6 +5,8 @@
 #include <sys/mman.h>
 #include <errno.h>
 
+#include <valgrind/valgrind.h>
+
 void
 suika::stack::alloc()
 {
@@ -16,6 +18,8 @@ suika::stack::alloc()
 
         auto sp = reinterpret_cast<std::uint64_t>(ret) + m_stack_size;
         m_sp = reinterpret_cast<void*>(sp);
+
+        m_stack_id = VALGRIND_STACK_REGISTER(m_sp, reinterpret_cast<void*>(ret));       
 }
 
 void
@@ -24,4 +28,6 @@ suika::stack::dealloc()
         auto _ptr = reinterpret_cast<std::uint64_t>(m_sp) - m_stack_size;
         auto ptr = reinterpret_cast<void*>(_ptr);
         munmap(ptr, m_stack_size);
+
+        VALGRIND_STACK_DEREGISTER(m_stack_id);        
 }

@@ -10,6 +10,8 @@ namespace suika {
                 std::size_t m_stack_size;
                 void* m_sp = nullptr;
 
+                int m_stack_id;
+
                 void alloc();
                 void dealloc();
 
