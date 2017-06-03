@@ -55,8 +55,30 @@ namespace suika {
         };
         
         class fiber {
-        private:                
-                using entry_container_t = std::function<void()>;
+        private:
+                class entry_container_t {
+                        struct entry_wrapper_base {
+                                virtual void operator()() = 0;                                
+                        };
+
+                        template <typename _callable>
+                        struct entry_wrapper: entry_wrapper_base {
+                        private:
+                                _callable m_callable;
+
+                        public:
+                                entry_wrapper(_callable&& c): m_callable(std::move(c)) {}
+                                virtual void operator()() override { m_callable(); }
+                        };
+
+                        std::unique_ptr<entry_wrapper_base> m_wrapper;
+
+                public:
+                        template <typename _callable>
+                        entry_container_t(_callable&& c): m_wrapper(std::make_unique<entry_wrapper<std::decay_t<_callable>>>(std::forward<_callable>(c))) {}
+
+                        void operator()() { (*m_wrapper)(); }
+                };
 
                 static void entry(entry_container_t*, fiber_entity*);                
                 static void entry_wrapper(std::uint64_t, std::uint64_t);
@@ -101,25 +123,12 @@ namespace suika {
                                               std::memory_order_acq_rel);                        
                 }
 
-                template <typename type_tuple, typename callable, typename args_tuple_t, std::size_t... idx>
-                inline static decltype(auto)
-                apply(callable&& f, args_tuple_t&& args_tuple, std::index_sequence<idx...>)
-                {
-                        return std::invoke(std::forward<callable>(f),
-                                           std::forward<std::tuple_element_t<idx, type_tuple>>(std::get<idx>(args_tuple))...);
-                }
-                         
-
                 template <typename callable, typename... args_t>
                 explicit fiber(callable&& _f, args_t&&... _args)
                 {
-                        std::decay_t<callable> f(std::forward<callable>(_f));
-                        std::tuple<std::decay_t<args_t>...> args(std::forward<args_t>(_args)...);
-
-                        using type_tuple = std::tuple<args_t...>;                        
+                        std::tuple<std::decay_t<args_t>...> tpl(std::forward<args_t>(_args)...);
                         
-                        entry_container_t entry([f = std::move(f), args = std::move(args)] (){ apply<type_tuple>(std::move(f), std::move(args),
-                                                                                                                 std::make_index_sequence<sizeof...(args_t)>{}); });
+                        entry_container_t entry([f{std::forward<callable>(_f)}, args{std::move(tpl)}]() mutable { std::apply(std::move(f), std::move(args)); });
                         create_entity(entry);
                 }
 
