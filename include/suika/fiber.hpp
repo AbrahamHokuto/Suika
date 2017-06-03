@@ -38,15 +38,13 @@ namespace suika {
 
                 futex m_status_futex{0}; // 0: joinable 1: detached 2: exited 3: detached-exited 4: corpse
                 
-                constexpr static std::size_t default_stack_size = 4096;                
-
                 fiber_entity();
-                fiber_entity(context::entry_t entry, std::size_t stack_size = default_stack_size);
+                fiber_entity(stack _stack, context::entry_t entry);
 
                 fiber_entity* switch_to(std::uint64_t, std::uint64_t, fiber_entity* entity);
                 void interrupt();
 
-                void clean_up();
+                void halalize();
 
                 void set_ready();
 
@@ -82,11 +80,13 @@ namespace suika {
 
                 static void entry(entry_container_t*, fiber_entity*);                
                 static void entry_wrapper(std::uint64_t, std::uint64_t);
+
+                constexpr static std::size_t default_stack_size = 64 * 1024;
                 
         private:
                 std::atomic<fiber_entity*> m_entity{nullptr};
 
-                void create_entity(entry_container_t& entry);
+                void create_entity(entry_container_t& entry, stack _stack);
 
         // protected:
         //         virtual void pre_yield_hook();
@@ -124,13 +124,17 @@ namespace suika {
                 }
 
                 template <typename callable, typename... args_t>
-                explicit fiber(callable&& _f, args_t&&... _args)
+                explicit fiber(std::size_t stack_size, callable&& _f, args_t&&... _args)
                 {
+                        stack _stack(stack_size);
                         std::tuple<std::decay_t<args_t>...> tpl(std::forward<args_t>(_args)...);
                         
                         entry_container_t entry([f{std::forward<callable>(_f)}, args{std::move(tpl)}]() mutable { std::apply(std::move(f), std::move(args)); });
-                        create_entity(entry);
+                        create_entity(entry, std::move(_stack));
                 }
+
+                template <typename callable, typename... args_t>
+                explicit fiber(callable&& f, args_t&&... _args): fiber(default_stack_size, std::forward<callable>(f), std::forward<args_t>(_args)...) {}
 
                 suika::id id();
 

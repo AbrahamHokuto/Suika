@@ -16,8 +16,8 @@ fiber_entity::fiber_entity(): m_id(next_id.fetch_add(1)), m_scheduler(&sched)
         this_fiber = this;
 }
 
-fiber_entity::fiber_entity(context::entry_t entry, std::size_t stack_size):
-        m_stack(stack_size),
+fiber_entity::fiber_entity(stack _stack, context::entry_t entry):
+        m_stack(std::move(_stack)),
         m_context(entry, reinterpret_cast<std::uint64_t>(m_stack.sp())),
         m_id(next_id.fetch_add(1)),
         m_scheduler(&sched)
@@ -44,7 +44,7 @@ fiber_entity::switch_to(std::uint64_t first, std::uint64_t second_or_ret, fiber_
                         prev = nullptr;
                         break;
                 case 3:
-                        prev->clean_up();
+                        prev->halalize();
                         prev = nullptr;
                         break;
                 default:
@@ -63,9 +63,12 @@ fiber_entity::interrupt()
 }
 
 void
-fiber_entity::clean_up()
+fiber_entity::halalize()
 {
-        delete this;
+        auto _stack{std::move(this->m_stack)};
+        
+        // Allahu Akbar!
+        this->~fiber_entity();
 }
 
 void
@@ -95,11 +98,12 @@ fiber_entity::wait_until(std::chrono::steady_clock::time_point& deadline)
 }
 
 void
-fiber::create_entity(entry_container_t& entry_container)
+fiber::create_entity(entry_container_t& entry_container, stack _stack)
 {
-        auto entity = new fiber_entity(entry_wrapper);
+        auto vp = _stack.vp();
+        auto entity = new(vp) fiber_entity(std::move(_stack), entry_wrapper);
         fiber_entity::this_fiber->switch_to(reinterpret_cast<std::uint64_t>(&entry_container), reinterpret_cast<std::uint64_t>(fiber_entity::this_fiber), entity);
-
+        
         // parent will be resumed only after child have finished its initialization
         
         this->m_entity.store(entity, std::memory_order_release);
@@ -180,7 +184,7 @@ fiber::join()
         m_entity.store(nullptr, std::memory_order_release);
 
         if (entity->m_status_futex.word.exchange(3, std::memory_order_acquire) == 4)
-                delete entity;       
+                entity->halalize();
 }
 
 void
@@ -189,7 +193,7 @@ fiber::detach()
         auto entity = m_entity.exchange(nullptr, std::memory_order_acq_rel);
         
         if (entity->m_status_futex.word.exchange(1, std::memory_order_acq_rel) == 4)
-                delete entity;            
+                entity->halalize();
 }
 
 void
