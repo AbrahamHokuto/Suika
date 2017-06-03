@@ -101,13 +101,25 @@ namespace suika {
                                               std::memory_order_acq_rel);                        
                 }
 
+                template <typename type_tuple, typename callable, typename args_tuple_t, std::size_t... idx>
+                inline static decltype(auto)
+                apply(callable&& f, args_tuple_t&& args_tuple, std::index_sequence<idx...>)
+                {
+                        return std::invoke(std::forward<callable>(f),
+                                           std::forward<std::tuple_element_t<idx, type_tuple>>(std::get<idx>(args_tuple))...);
+                }
+                         
+
                 template <typename callable, typename... args_t>
                 explicit fiber(callable&& _f, args_t&&... _args)
                 {
                         std::decay_t<callable> f(std::forward<callable>(_f));
                         std::tuple<std::decay_t<args_t>...> args(std::forward<args_t>(_args)...);
+
+                        using type_tuple = std::tuple<args_t...>;                        
                         
-                        entry_container_t entry([f = std::move(f), args = std::move(args)] (){ std::apply(std::move(f), std::move(args)); });
+                        entry_container_t entry([f = std::move(f), args = std::move(args)] (){ apply<type_tuple>(std::move(f), std::move(args),
+                                                                                                                 std::make_index_sequence<sizeof...(args_t)>{}); });
                         create_entity(entry);
                 }
 
