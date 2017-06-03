@@ -5,23 +5,24 @@
 #include <sys/mman.h>
 #include <errno.h>
 
-void
-suika::stack::alloc()
+
+suika::stack_info
+suika::stack_allocator::alloc(std::size_t stack_size)
 {
-        auto ret = mmap(nullptr, m_stack_size, PROT_READ | PROT_WRITE,
+        auto ret = mmap(nullptr, stack_size, PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS | MAP_GROWSDOWN | MAP_STACK, 0, 0);
 
         if (ret == MAP_FAILED)
                 throw std::system_error(errno, std::system_category());
 
         auto vp = reinterpret_cast<std::uint64_t>(ret);
-        auto sp = vp + m_stack_size;
-        m_sp = reinterpret_cast<void*>(sp);
-        m_vp = reinterpret_cast<void*>(vp);
+        auto sp = vp + stack_size;
+        return { reinterpret_cast<void*>(vp), reinterpret_cast<void*>(sp) };
 }
 
 void
-suika::stack::dealloc()
-{        
-        munmap(m_vp, m_stack_size);
+suika::stack_allocator::dealloc(const stack_info& info)
+{
+        auto stack_size = reinterpret_cast<std::uint64_t>(info.sp) - reinterpret_cast<std::uint64_t>(info.vp);
+        munmap(info.vp, stack_size);
 }

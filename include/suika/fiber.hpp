@@ -26,7 +26,7 @@ namespace suika {
         struct fiber_entity: public list_base_hook<fiber_entity> {
                 static thread_local fiber_entity* this_fiber;
                 
-                stack m_stack;
+                stack_info m_stack;
                 context m_context;
                 id m_id;
                 scheduler *m_scheduler = nullptr;
@@ -39,7 +39,7 @@ namespace suika {
                 futex m_status_futex{0}; // 0: joinable 1: detached 2: exited 3: detached-exited 4: corpse
                 
                 fiber_entity();
-                fiber_entity(stack _stack, context::entry_t entry);
+                fiber_entity(stack_info stack, context::entry_t entry);
 
                 fiber_entity* switch_to(std::uint64_t, std::uint64_t, fiber_entity* entity);
                 void interrupt();
@@ -86,7 +86,7 @@ namespace suika {
         private:
                 std::atomic<fiber_entity*> m_entity{nullptr};
 
-                void create_entity(entry_container_t& entry, stack _stack);
+                void create_entity(entry_container_t& entry, stack_info stack);
 
         // protected:
         //         virtual void pre_yield_hook();
@@ -126,11 +126,11 @@ namespace suika {
                 template <typename callable, typename... args_t>
                 explicit fiber(std::size_t stack_size, callable&& _f, args_t&&... _args)
                 {
-                        stack _stack(stack_size);
+                        stack_info stack = stack_allocator().alloc(stack_size);
                         std::tuple<std::decay_t<args_t>...> tpl(std::forward<args_t>(_args)...);
                         
                         entry_container_t entry([f{std::forward<callable>(_f)}, args{std::move(tpl)}]() mutable { std::apply(std::move(f), std::move(args)); });
-                        create_entity(entry, std::move(_stack));
+                        create_entity(entry, stack);
                 }
 
                 template <typename callable, typename... args_t>

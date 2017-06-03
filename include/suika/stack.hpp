@@ -5,49 +5,17 @@
 #include <algorithm>
 
 namespace suika {
-        class stack {
-        private:
-                std::size_t m_stack_size;
-                void* m_sp = nullptr;
-                void* m_vp = nullptr;
-
-                int m_stack_id;
-
-                void alloc();
-                void dealloc();
-
+        struct stack_info {
+                void* vp;
+                void* sp;                
+        };
+        
+        class stack_allocator {
         public:
-                stack() = default;
-                stack(std::size_t stack_size):
-                        m_stack_size(stack_size)
-                {
-                        alloc();
-                }
+                stack_allocator() = default;
 
-                stack(const stack&) = delete;
-                stack(stack&& rhs) {
-                        m_stack_size = rhs.m_stack_size;
-                        std::swap(m_sp, rhs.m_sp);
-                        std::swap(m_vp, rhs.m_vp);
-                };
-
-                stack&
-                operator=(stack&& rhs)
-                {
-                        if (m_sp) dealloc();
-
-                        m_sp = nullptr;
-                        m_vp = nullptr;
-                        std::swap(m_sp, rhs.m_sp);
-                        std::swap(m_vp, rhs.m_vp);
-                        
-                        return *this;
-                }
-
-                ~stack() { if (m_vp) dealloc(); }
-                
-                void* sp() const noexcept { return m_sp; }
-                void* vp() const noexcept { return m_vp; }
+                stack_info alloc(std::size_t);
+                void dealloc(const stack_info& info);
         };
 }
 

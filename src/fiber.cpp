@@ -16,9 +16,9 @@ fiber_entity::fiber_entity(): m_id(next_id.fetch_add(1)), m_scheduler(&sched)
         this_fiber = this;
 }
 
-fiber_entity::fiber_entity(stack _stack, context::entry_t entry):
-        m_stack(std::move(_stack)),
-        m_context(entry, reinterpret_cast<std::uint64_t>(m_stack.sp())),
+fiber_entity::fiber_entity(stack_info stack, context::entry_t entry):
+        m_stack(stack),
+        m_context(entry, reinterpret_cast<std::uint64_t>(m_stack.sp)),
         m_id(next_id.fetch_add(1)),
         m_scheduler(&sched)
 {
@@ -65,10 +65,12 @@ fiber_entity::interrupt()
 void
 fiber_entity::halalize()
 {
-        auto _stack{std::move(this->m_stack)};
+        auto stack{this->m_stack};
         
         // Allahu Akbar!
         this->~fiber_entity();
+
+        stack_allocator().dealloc(stack);
 }
 
 void
@@ -98,10 +100,9 @@ fiber_entity::wait_until(std::chrono::steady_clock::time_point& deadline)
 }
 
 void
-fiber::create_entity(entry_container_t& entry_container, stack _stack)
+fiber::create_entity(entry_container_t& entry_container, stack_info stack)
 {
-        auto vp = _stack.vp();
-        auto entity = new(vp) fiber_entity(std::move(_stack), entry_wrapper);
+        auto entity = new(stack.vp) fiber_entity(stack, entry_wrapper);
         fiber_entity::this_fiber->switch_to(reinterpret_cast<std::uint64_t>(&entry_container), reinterpret_cast<std::uint64_t>(fiber_entity::this_fiber), entity);
         
         // parent will be resumed only after child have finished its initialization
