@@ -1,18 +1,20 @@
 #include <suika/fiber.hpp>
+#include <iostream>
 
 void
 test()
 {       
-        try {
-                throw std::runtime_error("test");
-        } catch (const std::exception& e) {                
-        }
+        throw std::runtime_error("test");
 }
 
 int
 main()
 {
         suika::fiber f(test);
-        f.join();
-        throw std::runtime_error("test");
+
+        try {
+                f.join();
+        } catch (const std::exception& e) {
+                std::cout << "exception from child fiber: " << e.what() << std::endl;
+        }
 }

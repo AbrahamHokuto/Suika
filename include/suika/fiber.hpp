@@ -11,29 +11,33 @@
 #include <chrono>
 #include <memory>
 #include <functional>
+#include <condition_variable>
+#include <mutex>
+#include <exception>
+#include <stdexcept>
 
 namespace suika {
         using id = std::uint64_t;
         
         class fiber_interruption {};
 
-        class fiber_entity: public list_base_hook<fiber_entity> {
-        public:
+        class fiber;
+
+        struct fiber_entity: public list_base_hook<fiber_entity> {
                 static thread_local fiber_entity* this_fiber;
                 
                 stack m_stack;
                 context m_context;
                 id m_id;
-                scheduler *m_scheduler;
+                scheduler *m_scheduler = nullptr;
 
-                futex m_running_futex; // 1 for running
-                
-                std::atomic_bool m_detached{false};
+                std::exception_ptr m_eptr = nullptr;
+
                 std::atomic_bool m_interrupted{false};
                 std::atomic_bool m_interruption_enabled{true};
 
-                std::atomic<std::size_t> m_joiner_count{0};
-
+                futex m_status_futex{1}; // 0: exited; 1: joinable; 2: detached 3: corpse
+                
                 constexpr static std::size_t default_stack_size = 4096;                
 
                 fiber_entity();
@@ -51,17 +55,16 @@ namespace suika {
         };
         
         class fiber {
-        private:
+        private:                
                 using entry_container_t = std::function<void()>;
 
-                static void entry(entry_container_t*, fiber*);                
+                static void entry(entry_container_t*, fiber_entity*);                
                 static void entry_wrapper(std::uint64_t, std::uint64_t);
                 
         private:
                 std::atomic<fiber_entity*> m_entity{nullptr};
 
                 void create_entity(entry_container_t& entry);
-                fiber_entity* safe_entity_access();
 
         // protected:
         //         virtual void pre_yield_hook();

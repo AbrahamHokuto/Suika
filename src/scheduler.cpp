@@ -33,9 +33,18 @@ fiber_entity*
 scheduler::pick_next()
 {
         std::unique_lock<std::mutex> lk(m_guard, std::defer_lock);
+
+        using namespace std::literals::chrono_literals;        
         
         do {
-                m_loop.run_once(m_sleep_queue.empty() ? std::chrono::steady_clock::time_point() : m_sleep_queue.min().deadline);
+                auto timeout = std::chrono::milliseconds::max();                
+
+                if (!m_ready_list.empty())
+                        timeout = 0ms;
+                else if (!m_sleep_queue.empty())
+                        timeout = std::chrono::duration_cast<std::chrono::milliseconds>(m_sleep_queue.min().deadline - std::chrono::steady_clock::now());
+                
+                m_loop.run_once(timeout);
                 
                 auto now = std::chrono::steady_clock::now();
 

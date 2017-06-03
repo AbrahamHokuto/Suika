@@ -96,23 +96,19 @@ io::loop::~loop()
 }
 
 void
-io::loop::run_once(std::chrono::steady_clock::time_point deadline)
+io::loop::run_once(std::chrono::milliseconds timeout)
 {
         constexpr static std::size_t max_events = 256;
         
         ::epoll_event evs[max_events];
 
-        while (true) {
-                int timeout = -1;
-                if (deadline != std::chrono::steady_clock::time_point())
-                        timeout = std::max(0L, std::chrono::duration_cast<std::chrono::milliseconds>(deadline - std::chrono::steady_clock::now()).count());
-                
-                auto ret = ::epoll_wait(m_epfd, evs, max_events, timeout);                
+        while (true) {                
+                auto ret = ::epoll_wait(m_epfd, evs, max_events, timeout == std::chrono::milliseconds::max() ? -1 : std::max(0L, timeout.count()));
                 if (ret < 0) {
                         if (errno != EINTR)
                                 throw std::system_error(errno, std::system_category());
 
-                        continue;                        
+                        continue;
                 }
 
                 for (int i = 0; i < ret; ++i) {

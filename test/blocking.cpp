@@ -20,10 +20,9 @@ main()
         std::cout << "main" << std::endl;
         suika::fiber fib(fiber, &f);
         std::cout << "main" << std::endl;
+        f.word.store(1, std::memory_order_release);
         f.wake(1);
-        suika::self::yield();
         std::cout << "main" << std::endl;
 
-        std::string line;
-        std::getline(std::cin, line);
+        fib.join();
 }

@@ -35,7 +35,7 @@ namespace suika::io {
                 loop();
                 ~loop();
 
-                void run_once(std::chrono::steady_clock::time_point deadline);
+                void run_once(std::chrono::milliseconds timeout);
 
                 void interrupt();
 

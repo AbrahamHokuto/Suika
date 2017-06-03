@@ -36,13 +36,24 @@ fiber_entity::switch_to(std::uint64_t first, std::uint64_t second_or_ret, fiber_
         auto prev = reinterpret_cast<fiber_entity*>(_prev);
 
         this_fiber = this;
+
         
-        if (prev->m_running_futex.word.load(std::memory_order_acquire)) {
-                return prev;
-        } else {
-                prev->clean_up();
-                return nullptr;
+        if (prev->m_status_futex.word.load(std::memory_order::memory_order_acquire) != 1) {
+                switch (prev->m_status_futex.word.exchange(3, std::memory_order_release)) {
+                case 0:
+                        prev = nullptr;
+                        break;
+                case 2:
+                        prev->clean_up();
+                        prev = nullptr;
+                        break;
+                default:
+                        // we shouldn't be there
+                        std::terminate();
+                }
         }
+
+        return prev;
 }
 
 void
@@ -54,8 +65,7 @@ fiber_entity::interrupt()
 void
 fiber_entity::clean_up()
 {
-        if (m_detached.load(std::memory_order::memory_order_acquire))
-            delete this;
+        delete this;
 }
 
 void
@@ -88,43 +98,50 @@ void
 fiber::create_entity(entry_container_t& entry_container)
 {
         auto entity = new fiber_entity(entry_wrapper);
-        sched.ready(*fiber_entity::this_fiber);
-        entity->m_running_futex.word.store(1, std::memory_order_release);
-        fiber_entity::this_fiber->switch_to(reinterpret_cast<std::uint64_t>(&entry_container), reinterpret_cast<std::uint64_t>(this), entity);        
-        // control flow won't return until child finishing its initialization        
+        fiber_entity::this_fiber->switch_to(reinterpret_cast<std::uint64_t>(&entry_container), reinterpret_cast<std::uint64_t>(fiber_entity::this_fiber), entity);
+
+        // parent will be resumed only after child have finished its initialization
+        
         this->m_entity.store(entity, std::memory_order_release);
 }
 
 void
 fiber::entry_wrapper(std::uint64_t first, std::uint64_t second)
 {
-        // this function does not return, so do not create any local object that is not trivially destructible.
+        // NORETURN: non trivially-destructable objects not allowed
         auto entry_container_ptr = reinterpret_cast<entry_container_t*>(first);
-        auto this_ptr = reinterpret_cast<fiber*>(second);
+        auto parent_ptr = reinterpret_cast<fiber_entity*>(second);
 
-        entry(entry_container_ptr, this_ptr);
+        entry(entry_container_ptr, parent_ptr);
         self::resched();
 
         std::terminate();
 }
 
 void
-fiber::entry(entry_container_t* entry_container_ptr, fiber*)
-{
-        auto entry_container = std::move(*entry_container_ptr);
+fiber::entry(entry_container_t* entry_container_ptr, fiber_entity* parent_ptr)
+{        
+        auto entry_container = std::move(*entry_container_ptr);        
+        // initialization finished: mark myself ready and switch back to parent
 
+        fiber_entity::this_fiber->set_ready();
+        fiber_entity::this_fiber->switch_to(0, reinterpret_cast<std::uint64_t>(fiber_entity::this_fiber), parent_ptr);
+
+        // actually start running
+        
         try {
                 entry_container();
         } catch (const fiber_interruption&) {
         } catch (const _fiber_exit_unwind&) {
-        } catch (const std::exception& e) {
-                // TODO: uncaught exception msg
         } catch (...) {
-                // TODO: uncaught exception msg
+                fiber_entity::this_fiber->m_eptr = std::current_exception();
         }
 
-        fiber_entity::this_fiber->m_running_futex.word.store(0, std::memory_order::memory_order_release);
-        fiber_entity::this_fiber->m_running_futex.wake(std::numeric_limits<std::size_t>::max());
+        if (fiber_entity::this_fiber->m_status_futex.word.exchange(0, std::memory_order::memory_order_acq_rel) == 2)
+                fiber_entity::this_fiber->m_status_futex.word.store(2, std::memory_order::memory_order_release);
+        else
+                fiber_entity::this_fiber->m_status_futex.wake(1);        
+        
 }
 
 fiber::~fiber()
@@ -135,77 +152,56 @@ fiber::~fiber()
         }
 }
 
-fiber_entity*
-fiber::safe_entity_access()
-{
-        auto entity_ptr = m_entity.load(std::memory_order::memory_order_acquire);
-        if (!entity_ptr)
-                return nullptr;
-
-        if (entity_ptr->m_detached.load(std::memory_order::memory_order_acquire))
-                return nullptr;
-
-        return entity_ptr;
-}
-
 suika::id
 fiber::id()
 {
-        return safe_entity_access()->m_id;
+        return m_entity.load(std::memory_order_acquire)->m_id;
 }
 
 bool
 fiber::joinable()
 {
-        return safe_entity_access() != nullptr;
+        return m_entity.load(std::memory_order_acquire) != nullptr;
 }
 
 bool
 fiber::interruption_enabled()
 {
-        return safe_entity_access()->m_interruption_enabled.load(std::memory_order_acquire);        
+        return m_entity.load(std::memory_order_acquire)->m_interruption_enabled.load(std::memory_order_acquire);        
 }
 
 void
 fiber::join()
 {
-        auto entity = safe_entity_access();
+        auto entity = m_entity.load(std::memory_order_acquire);
         if (!entity)
-                return;
-
-        // TODO: fiber synchronozation mechanics
-
-        entity->m_joiner_count.fetch_add(1, std::memory_order_acq_rel);
-        entity->m_running_futex.wait(1);
-
-        entity = safe_entity_access();
-        if (!entity)
-                return;
-
-        if (entity->m_joiner_count.fetch_sub(1, std::memory_order_acq_rel) > 1)
-                return;
+                throw std::invalid_argument{"fiber is not joinable"};
+        
+        entity->m_status_futex.wait(1);
 
         m_entity.store(nullptr, std::memory_order_release);
-        delete entity;
+
+        auto eptr = entity->m_eptr;
+        if (entity->m_status_futex.word.exchange(2, std::memory_order_acquire) == 3)
+                delete entity;
+
+        if (eptr)
+                std::rethrow_exception(eptr);        
 }
 
 void
 fiber::detach()
 {
-        auto entity = safe_entity_access();
-        if (!entity)
-                return;
-
-        entity->m_detached.store(true, std::memory_order_release);
-        m_entity.store(nullptr, std::memory_order_release);
-
-        entity->m_running_futex.wake(std::numeric_limits<std::size_t>::max());
+        auto entity = m_entity.exchange(nullptr, std::memory_order_acq_rel);
+        
+        if (entity->m_status_futex.word.exchange(2, std::memory_order_acq_rel) == 3)
+                delete entity;            
 }
 
 void
 fiber::interrupt()
 {
-        auto entity = safe_entity_access();
+        auto entity = m_entity.load(std::memory_order_acquire);
         if (!entity)
                 throw invalid_handle();
 
@@ -232,11 +228,13 @@ self::resched()
 void
 self::yield()
 {
-        auto next = sched.pick_next();
+        auto self = fiber_entity::this_fiber;
+        sched.ready(*self);
         
-        sched.ready(*fiber_entity::this_fiber);
+        auto next = sched.pick_next();
 
-        fiber_entity::this_fiber->switch_to(0, reinterpret_cast<std::uint64_t>(fiber_entity::this_fiber), next);
+        if (next != self)
+                fiber_entity::this_fiber->switch_to(0, reinterpret_cast<std::uint64_t>(fiber_entity::this_fiber), next);
 
         interruption_point();
 }

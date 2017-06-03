@@ -10,7 +10,7 @@ fiber()
         
         try {
                 suika::self::restore_interruption _ri(_di);
-                // suika::self::interruption_point();
+                suika::self::interruption_point();
         } catch (const suika::fiber_interruption&) {
                 std::cout << "interrupted" << std::endl;
         }
@@ -27,7 +27,7 @@ main()
 {
         std::cout << "main" << std::endl;
         suika::fiber fib(fiber);
-        // fib.interrupt();
+        fib.interrupt();
         std::cout << "main" << std::endl;
-        // fib.join();        
+        fib.join();        
 }

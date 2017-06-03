@@ -1,6 +1,8 @@
 #ifndef SKA_LIST_HPP
 #define SKA_LIST_HPP
 
+#include <cstdint>
+
 namespace suika {
         template <typename _elem_t> class list;
         
@@ -35,6 +37,16 @@ namespace suika {
 
                 _elem_t& head() { return *static_cast<_elem_t*>(head_node.next); }
                 _elem_t& tail() { return *static_cast<_elem_t*>(head_node.prev); }
+
+                std::size_t size()
+                {
+                        std::size_t ret = 0;
+
+                        for (ctl_t* i = head_node.next; i != &head_node; i = i->next)
+                                ++ret;
+
+                        return ret;
+                }
         };
 }
 
