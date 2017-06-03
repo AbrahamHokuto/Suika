@@ -38,12 +38,12 @@ fiber_entity::switch_to(std::uint64_t first, std::uint64_t second_or_ret, fiber_
         this_fiber = this;
 
         
-        if (prev->m_status_futex.word.load(std::memory_order::memory_order_acquire) != 1) {
-                switch (prev->m_status_futex.word.exchange(3, std::memory_order_release)) {
-                case 0:
+        if (prev->m_status_futex.word.load(std::memory_order::memory_order_acquire) > 1) {
+                switch (prev->m_status_futex.word.exchange(4, std::memory_order_release)) {
+                case 2:
                         prev = nullptr;
                         break;
-                case 2:
+                case 3:
                         prev->clean_up();
                         prev = nullptr;
                         break;
@@ -137,10 +137,8 @@ fiber::entry(entry_container_t* entry_container_ptr, fiber_entity* parent_ptr)
                 fiber_entity::this_fiber->m_eptr = std::current_exception();
         }
 
-        if (fiber_entity::this_fiber->m_status_futex.word.exchange(0, std::memory_order::memory_order_acq_rel) == 2)
-                fiber_entity::this_fiber->m_status_futex.word.store(2, std::memory_order::memory_order_release);
-        else
-                fiber_entity::this_fiber->m_status_futex.wake(1);        
+        if (fiber_entity::this_fiber->m_status_futex.word.fetch_add(2, std::memory_order::memory_order_acq_rel) == 0)
+                fiber_entity::this_fiber->m_status_futex.wake(1);
         
 }
 
@@ -177,16 +175,12 @@ fiber::join()
         if (!entity)
                 throw std::invalid_argument{"fiber is not joinable"};
         
-        entity->m_status_futex.wait(1);
+        entity->m_status_futex.wait(0);
 
         m_entity.store(nullptr, std::memory_order_release);
 
-        auto eptr = entity->m_eptr;
-        if (entity->m_status_futex.word.exchange(2, std::memory_order_acquire) == 3)
-                delete entity;
-
-        if (eptr)
-                std::rethrow_exception(eptr);        
+        if (entity->m_status_futex.word.exchange(3, std::memory_order_acquire) == 4)
+                delete entity;       
 }
 
 void
@@ -194,7 +188,7 @@ fiber::detach()
 {
         auto entity = m_entity.exchange(nullptr, std::memory_order_acq_rel);
         
-        if (entity->m_status_futex.word.exchange(2, std::memory_order_acq_rel) == 3)
+        if (entity->m_status_futex.word.exchange(1, std::memory_order_acq_rel) == 4)
                 delete entity;            
 }
 

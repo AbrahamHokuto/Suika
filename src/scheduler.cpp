@@ -43,7 +43,7 @@ scheduler::pick_next()
                         timeout = 0ms;
                 else if (!m_sleep_queue.empty())
                         timeout = std::chrono::duration_cast<std::chrono::milliseconds>(m_sleep_queue.min().deadline - std::chrono::steady_clock::now());
-                
+
                 m_loop.run_once(timeout);
                 
                 auto now = std::chrono::steady_clock::now();

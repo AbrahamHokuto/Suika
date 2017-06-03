@@ -36,7 +36,7 @@ namespace suika {
                 std::atomic_bool m_interrupted{false};
                 std::atomic_bool m_interruption_enabled{true};
 
-                futex m_status_futex{1}; // 0: exited; 1: joinable; 2: detached 3: corpse
+                futex m_status_futex{0}; // 0: joinable 1: detached 2: exited 3: detached-exited 4: corpse
                 
                 constexpr static std::size_t default_stack_size = 4096;                
 
